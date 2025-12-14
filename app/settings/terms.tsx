@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Leaf } from 'lucide-react-native';
-import { COLORS, SPACING, RADIUS } from '@/constants/Colors';
+import { ArrowLeft } from 'lucide-react-native';
+import { COLORS, SPACING } from '@/constants/Colors';
 import { Button } from '@/components/ui/Button';
 import { getContentBlock } from '@/lib/content';
 import { ContentBlock } from '@/types';
 
-export default function AboutScreen() {
+export default function TermsScreen() {
   const router = useRouter();
   const [content, setContent] = useState<ContentBlock | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,7 +18,7 @@ export default function AboutScreen() {
   }, []);
 
   const loadContent = async () => {
-    const data = await getContentBlock('about');
+    const data = await getContentBlock('terms');
     setContent(data);
     setLoading(false);
   };
@@ -33,18 +33,10 @@ export default function AboutScreen() {
           variant="ghost"
           style={styles.backButton}
         />
-        <Text style={styles.title}>{content?.title || 'Pazarım Hakkında'}</Text>
+        <Text style={styles.title}>{content?.title || 'Kullanım Koşulları'}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Leaf size={40} color={COLORS.freshGreen} fill={COLORS.freshGreen} />
-          </View>
-          <Text style={styles.appName}>PazarM</Text>
-          <Text style={styles.version}>Versiyon 1.0.0</Text>
-        </View>
-
         {loading ? (
           <ActivityIndicator color={COLORS.freshGreen} />
         ) : (
@@ -52,10 +44,6 @@ export default function AboutScreen() {
             {content?.body || 'İçerik yüklenemedi.'}
           </Text>
         )}
-
-        <Text style={styles.footerText}>
-          © 2025 PazarM Teknoloji A.Ş. Tüm hakları saklıdır.
-        </Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -89,49 +77,10 @@ const styles = StyleSheet.create({
     padding: SPACING.l,
     paddingBottom: 50,
   },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-    marginTop: SPACING.m,
-  },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
-    marginBottom: SPACING.m,
-  },
-  appName: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 24,
-    color: COLORS.textPrimary,
-  },
-  version: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-  },
   paragraph: {
     fontFamily: 'Inter_400Regular',
     fontSize: 15,
     color: COLORS.textSecondary,
     lineHeight: 24,
-    marginBottom: SPACING.m,
-  },
-  footerText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginTop: SPACING.xl,
-    opacity: 0.6,
   },
 });

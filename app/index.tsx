@@ -9,20 +9,21 @@ import { useStore } from '@/store/useStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
-
-// Provided Logo Assets
 const LOGO_WITH_TEXT = 'https://i.ibb.co/d0JPqzR6/logo.png';
 
 export default function GetStartedScreen() {
   const router = useRouter();
   const login = useStore((state) => state.login);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [loading, setLoading] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
+    setLoading(true);
     // Mock login with phone
-    const userPhone = phoneNumber || '555 123 45 67';
-    login({ id: 'u1', name: 'Ahmet Erener', email: 'ahmet@gmail.com', phone: userPhone });
+    const userPhone = phoneNumber || '5551234567';
+    await login(userPhone, 'Ahmet Erener');
+    setLoading(false);
     router.replace('/(tabs)/explore');
   };
 
@@ -77,6 +78,7 @@ export default function GetStartedScreen() {
               <Button 
                 title="Telefon ile Devam Et" 
                 onPress={handleLogin}
+                loading={loading}
                 style={styles.mainButton}
               />
             </View>
@@ -124,7 +126,7 @@ const styles = StyleSheet.create({
     minHeight: height,
   },
   topSection: {
-    height: height * 0.35, // Slightly reduced for compactness
+    height: height * 0.35,
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',

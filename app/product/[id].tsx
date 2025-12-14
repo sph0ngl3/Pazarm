@@ -1,38 +1,58 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import { COLORS, SPACING, RADIUS } from '@/constants/Colors';
-import { PRODUCTS } from '@/data/sampleData';
 import { useCartStore } from '@/store/useCartStore';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { supabase } from '@/lib/supabaseClient';
+import { Product } from '@/types';
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const addItem = useCartStore((state) => state.addItem);
   const { showToast } = useToast();
+  const [product, setProduct] = useState<Product | null>(null);
 
-  const product = PRODUCTS.find(p => p.id === id);
+  useEffect(() => {
+    if (id) {
+      fetchProduct();
+    }
+  }, [id]);
+
+  const fetchProduct = async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('*, market_products(current_price)')
+      .eq('id', id)
+      .single();
+    
+    if (data) {
+      setProduct({
+        ...data,
+        current_price: data.market_products?.[0]?.current_price || 0
+      });
+    }
+  };
 
   if (!product) return null;
 
   const handleAddToCart = () => {
     addItem({
       refId: product.id,
-      type: 'product',
-      nameTR: product.nameTR,
-      unitTR: product.unitTR,
-      priceTL: product.priceTL,
+      type: product.is_bundle ? 'bundle' : 'product',
+      nameTR: product.name,
+      unitTR: product.unit,
+      priceTL: product.current_price || 0,
       quantity: 1,
-      imageUrl: product.imageUrl
+      imageUrl: product.image_url || ''
     });
     
-    showToast(`Sepete eklendi: ${product.nameTR}`);
+    showToast(`Sepete eklendi: ${product.name}`);
     
-    // Auto navigate back to list
     setTimeout(() => {
       if (router.canGoBack()) {
         router.back();
@@ -46,7 +66,7 @@ export default function ProductDetailScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         <View style={styles.imageContainer}>
-          <Image source={{ uri: product.imageUrl }} style={styles.image} />
+          <Image source={{ uri: product.image_url || '' }} style={styles.image} />
           <SafeAreaView style={styles.header} edges={['top']}>
             <Button 
               title="" 
@@ -59,16 +79,16 @@ export default function ProductDetailScreen() {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.name}>{product.nameTR}</Text>
-          <Text style={styles.price}>{product.priceTL.toFixed(2)} TL <Text style={styles.unit}>/ {product.unitTR}</Text></Text>
+          <Text style={styles.name}>{product.name}</Text>
+          <Text style={styles.price}>{product.current_price?.toFixed(2)} TL <Text style={styles.unit}>/ {product.unit}</Text></Text>
           
           <View style={styles.divider} />
           
           <Text style={styles.sectionTitle}>Ürün Açıklaması</Text>
-          <Text style={styles.description}>{product.descriptionTR}</Text>
+          <Text style={styles.description}>{product.description}</Text>
           
           <View style={styles.noteContainer}>
-            <Text style={styles.noteText}>Bu ürün Pazarım Viranşehir Mah. noktası tarafından hazırlanır.</Text>
+            <Text style={styles.noteText}>Bu ürün Pazarım noktaları tarafından hazırlanır.</Text>
           </View>
         </View>
       </ScrollView>

@@ -16,24 +16,31 @@ export default function AddAddressScreen() {
   const [district, setDistrict] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [details, setDetails] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!title || !address || !district) {
       Alert.alert('Hata', 'Lütfen zorunlu alanları doldurun.');
       return;
     }
 
-    addAddress({
-      id: Date.now().toString(),
-      title,
-      fullAddress: address,
-      district,
-      neighborhood,
-      details
-    });
-
-    Alert.alert('Başarılı', 'Adres kaydedildi.');
-    router.back();
+    setLoading(true);
+    try {
+      await addAddress({
+        label: title,
+        full_address: address,
+        district,
+        neighborhood,
+        city: 'Mersin', // Default for now
+        is_default: false
+      });
+      Alert.alert('Başarılı', 'Adres kaydedildi.');
+      router.back();
+    } catch (e) {
+      Alert.alert('Hata', 'Adres kaydedilemedi.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -102,7 +109,7 @@ export default function AddAddressScreen() {
           />
         </View>
 
-        <Button title="Adresi Kaydet" onPress={handleSave} style={styles.saveButton} />
+        <Button title="Adresi Kaydet" onPress={handleSave} style={styles.saveButton} loading={loading} />
       </ScrollView>
     </SafeAreaView>
   );

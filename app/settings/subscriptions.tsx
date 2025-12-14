@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -6,10 +6,29 @@ import { ArrowLeft, Calendar, Package } from 'lucide-react-native';
 import { COLORS, SPACING, RADIUS } from '@/constants/Colors';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { DEMO_SUBSCRIPTIONS } from '@/data/sampleData';
+import { supabase } from '@/lib/supabaseClient';
+import { useStore } from '@/store/useStore';
+import { Subscription } from '@/types';
 
 export default function SubscriptionsScreen() {
   const router = useRouter();
+  const { user } = useStore();
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+
+  useEffect(() => {
+    if (user) {
+      fetchSubscriptions();
+    }
+  }, [user]);
+
+  const fetchSubscriptions = async () => {
+    const { data } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('profile_id', user?.id);
+    
+    if (data) setSubscriptions(data);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -25,32 +44,36 @@ export default function SubscriptionsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {DEMO_SUBSCRIPTIONS.map(sub => (
-          <Card key={sub.id} style={styles.subCard}>
-            <View style={styles.subHeader}>
-              <View style={styles.iconBox}>
-                <Package size={20} color={COLORS.freshGreen} />
+        {subscriptions.length === 0 ? (
+          <Text style={styles.emptyText}>Aktif aboneliğiniz bulunmuyor.</Text>
+        ) : (
+          subscriptions.map(sub => (
+            <Card key={sub.id} style={styles.subCard}>
+              <View style={styles.subHeader}>
+                <View style={styles.iconBox}>
+                  <Package size={20} color={COLORS.freshGreen} />
+                </View>
+                <View style={styles.statusBadge}>
+                  <Text style={styles.statusText}>Aktif</Text>
+                </View>
               </View>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>Aktif</Text>
+              
+              <Text style={styles.bundleName}>{sub.name}</Text>
+              
+              <View style={styles.row}>
+                <Calendar size={16} color={COLORS.textSecondary} />
+                <Text style={styles.dateText}>Sonraki Teslimat: {new Date(sub.next_delivery_date).toLocaleDateString('tr-TR')}</Text>
               </View>
-            </View>
-            
-            <Text style={styles.bundleName}>{sub.bundleNameTR}</Text>
-            
-            <View style={styles.row}>
-              <Calendar size={16} color={COLORS.textSecondary} />
-              <Text style={styles.dateText}>Sonraki Teslimat: {sub.nextDeliveryDate}</Text>
-            </View>
 
-            <View style={styles.divider} />
+              <View style={styles.divider} />
 
-            <View style={styles.priceRow}>
-              <Text style={styles.label}>Aylık Tutar</Text>
-              <Text style={styles.price}>{sub.monthlyPriceTL.toFixed(2)} TL</Text>
-            </View>
-          </Card>
-        ))}
+              <View style={styles.priceRow}>
+                <Text style={styles.label}>Aylık Tutar</Text>
+                <Text style={styles.price}>{sub.monthly_price?.toFixed(2)} TL</Text>
+              </View>
+            </Card>
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -82,7 +105,13 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.l,
-    paddingBottom: 40, // Reduced padding
+    paddingBottom: 40,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: COLORS.textSecondary,
+    marginTop: 20,
+    fontFamily: 'Inter_400Regular',
   },
   subCard: {
     padding: SPACING.m,

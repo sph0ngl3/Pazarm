@@ -1,59 +1,72 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Star, MapPin, Share2, Heart, Plus } from 'lucide-react-native';
+import { ArrowLeft, Star, MapPin, Plus } from 'lucide-react-native';
 import { COLORS, RADIUS, SPACING } from '@/constants/Colors';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { useStore } from '@/store/useStore';
-import { PRODUCTS } from '@/data/sampleData';
 import { useCartStore } from '@/store/useCartStore';
 import { useToast } from '@/components/ui/Toast';
+import { supabase } from '@/lib/supabaseClient';
+import { Market, Product } from '@/types';
 
 export default function LocationDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const market = useStore((state) => state.nearbyMarkets.find(m => m.id === id));
-  const createOrder = useStore((state) => state.createOrder);
   const addItem = useCartStore((state) => state.addItem);
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
+  
+  const [market, setMarket] = useState<Market | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    if (id) {
+      fetchMarketDetails();
+    }
+  }, [id]);
+
+  const fetchMarketDetails = async () => {
+    // 1. Fetch Market
+    const { data: m } = await supabase.from('markets').select('*').eq('id', id).single();
+    if (m) setMarket(m);
+
+    // 2. Fetch Products available in this market
+    const { data: mp } = await supabase
+      .from('market_products')
+      .select('current_price, product:products(*)')
+      .eq('market_id', id)
+      .limit(10);
+    
+    if (mp) {
+      const formatted = mp.map((item: any) => ({
+        ...item.product,
+        current_price: item.current_price
+      }));
+      setProducts(formatted);
+    }
+  };
 
   if (!market) return null;
-
-  // Filter products for this market (mock logic: if marketId matches or just show some random ones for demo)
-  const marketProducts = PRODUCTS.filter(p => p.marketId === id || !p.marketId).slice(0, 3);
-
-  const handleOrder = () => {
-    createOrder({
-      id: 'ord_' + Date.now(),
-      status: 'preparing',
-      etaMinutes: 9,
-      items: [],
-      marketId: market.id,
-      deliveryLocation: { latitude: 0, longitude: 0 }
-    });
-    router.push('/explore/tracking');
-  };
 
   const handleAddToCart = (item: any) => {
     addItem({
       refId: item.id,
       type: 'product',
-      nameTR: item.nameTR,
-      unitTR: item.unitTR,
-      priceTL: item.priceTL,
+      nameTR: item.name,
+      unitTR: item.unit,
+      priceTL: item.current_price,
       quantity: 1,
-      imageUrl: item.imageUrl
+      imageUrl: item.image_url
     });
-    showToast(`Sepete eklendi: ${item.nameTR}`);
+    showToast(`Sepete eklendi: ${item.name}`);
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.imageHeader}>
-        <Image source={{ uri: market.imageUrl }} style={styles.image} />
+        <Image source={{ uri: market.hero_image_url || '' }} style={styles.image} />
         <View style={styles.gradientOverlay} />
         <SafeAreaView style={styles.headerActions}>
           <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
@@ -64,27 +77,27 @@ export default function LocationDetailScreen() {
 
       <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 + insets.bottom }}>
         <View style={styles.section}>
-          <Text style={styles.breadcrumb}>Pazarım {'>'} Mahallem</Text>
-          <Text style={styles.title}>{market.nameTR}</Text>
+          <Text style={styles.breadcrumb}>Pazarım {'>'} {market.neighborhood}</Text>
+          <Text style={styles.title}>{market.name}</Text>
           <View style={styles.ratingRow}>
             <Star size={16} color="#F59E0B" fill="#F59E0B" />
-            <Text style={styles.ratingText}>{market.rating} ({market.reviewCount})</Text>
+            <Text style={styles.ratingText}>{market.rating} ({market.rating_count})</Text>
           </View>
         </View>
 
         {/* Market Products Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bu noktadaki ürünler</Text>
-          {marketProducts.map(product => (
+          {products.map(product => (
             <TouchableOpacity 
               key={product.id} 
               onPress={() => router.push(`/product/${product.id}`)}
             >
               <Card style={styles.productCard}>
-                <Image source={{ uri: product.imageUrl }} style={styles.productImage} />
+                <Image source={{ uri: product.image_url || '' }} style={styles.productImage} />
                 <View style={styles.productInfo}>
-                  <Text style={styles.productName}>{product.nameTR}</Text>
-                  <Text style={styles.productPrice}>{product.priceTL} TL / {product.unitTR}</Text>
+                  <Text style={styles.productName}>{product.name}</Text>
+                  <Text style={styles.productPrice}>{product.current_price} TL / {product.unit}</Text>
                 </View>
                 <TouchableOpacity 
                   style={styles.addButton}
@@ -101,38 +114,7 @@ export default function LocationDetailScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Haftanın Pazar Seti</Text>
-          <Card style={styles.bundleCard}>
-            <View style={styles.bundleContent}>
-              <View style={styles.bundleInfo}>
-                <Text style={styles.bundleTitle}>20 Kg Taptaze Ürün Seti</Text>
-                <View style={styles.distanceBadge}>
-                  <MapPin size={12} color={COLORS.textSecondary} />
-                  <Text style={styles.distanceText}>{market.distanceMeters}m</Text>
-                </View>
-              </View>
-              <View style={styles.bundleActions}>
-                <Button 
-                  title="Sipariş Ver" 
-                  size="small" 
-                  onPress={handleOrder}
-                />
-              </View>
-            </View>
-          </Card>
-        </View>
-
-        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bilgi:</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Pazartesi – Cuma:</Text>
-            <Text style={styles.infoValue}>{market.hours.weekdays}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Cumartesi – Pazar:</Text>
-            <Text style={styles.infoValue}>{market.hours.weekends}</Text>
-          </View>
-          <View style={styles.divider} />
           <View style={styles.addressContainer}>
             <Text style={styles.addressText}>{market.address}</Text>
           </View>
@@ -214,56 +196,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textPrimary,
     marginBottom: SPACING.m,
-  },
-  bundleCard: {
-    padding: SPACING.m,
-  },
-  bundleContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  bundleInfo: {
-    flex: 1,
-  },
-  bundleTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  distanceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  distanceText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  bundleActions: {
-    alignItems: 'flex-end',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.s,
-  },
-  infoLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: COLORS.textPrimary,
-  },
-  infoValue: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.cardBorder,
-    marginVertical: SPACING.m,
   },
   addressContainer: {},
   addressText: {

@@ -1,36 +1,64 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, RADIUS, SPACING } from '@/constants/Colors';
 import { Card } from '@/components/ui/Card';
 import { MapPin, Star } from 'lucide-react-native';
-import { CATEGORIES, BUNDLES } from '@/data/sampleData';
 import { PazarmHeader } from '@/components/PazarmHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/lib/supabaseClient';
+import { Category, Product } from '@/types';
 
 export default function ProductsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [bundles, setBundles] = useState<Product[]>([]);
 
-  // Filter categories to ensure we don't show duplicates if any
-  const dailyCategories = CATEGORIES.filter(c => c.type === 'daily');
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    // Categories
+    const { data: cats } = await supabase
+      .from('categories')
+      .select('*')
+      .order('display_order');
+    if (cats) setCategories(cats);
+
+    // Bundles (Products marked as bundle)
+    // Join market_products to get price
+    const { data: bndls } = await supabase
+      .from('products')
+      .select('*, market_products(current_price)')
+      .eq('is_bundle', true);
+    
+    if (bndls) {
+      const formatted = bndls.map((b: any) => ({
+        ...b,
+        current_price: b.market_products?.[0]?.current_price || 0
+      }));
+      setBundles(formatted);
+    }
+  };
 
   return (
     <View style={styles.container}>
       <PazarmHeader title="Ürünler" />
 
       <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 80 }]}>
-        {/* Daily Categories Grid */}
+        {/* Categories Grid */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Kategoriler</Text>
           <View style={styles.grid}>
-            {dailyCategories.map(cat => (
+            {categories.filter(c => c.slug !== 'paketler').map(cat => (
               <TouchableOpacity 
                 key={cat.id} 
-                onPress={() => router.push(`/product/list?categoryId=${cat.id}&categoryTitleTR=${encodeURIComponent(cat.nameTR)}`)}
+                onPress={() => router.push(`/product/list?categoryId=${cat.id}&categoryTitleTR=${encodeURIComponent(cat.name)}`)}
                 style={styles.gridItemWrapper}
               >
-                <CategoryCard title={cat.nameTR} distance="250m" imageUrl={cat.imageUrl} />
+                <CategoryCard title={cat.name} distance="Tüm Pazarlar" imageUrl={cat.image_url || ''} />
               </TouchableOpacity>
             ))}
           </View>
@@ -40,12 +68,17 @@ export default function ProductsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Haftalık Abonelik Paketleri</Text>
           <View style={styles.verticalList}>
-            {BUNDLES.map(bundle => (
+            {bundles.map(bundle => (
               <TouchableOpacity 
                 key={bundle.id} 
-                onPress={() => router.push(`/bundle/${bundle.id}`)}
+                onPress={() => router.push(`/product/${bundle.id}`)}
               >
-                <BundleCard title={bundle.titleTR} rating={bundle.rating.toString()} imageUrl={bundle.imageUrl} />
+                <BundleCard 
+                  title={bundle.name} 
+                  rating="4.9" 
+                  imageUrl={bundle.image_url || ''} 
+                  price={bundle.current_price}
+                />
               </TouchableOpacity>
             ))}
           </View>
@@ -70,7 +103,7 @@ const CategoryCard = ({ title, distance, imageUrl }: { title: string, distance: 
   </Card>
 );
 
-const BundleCard = ({ title, rating, imageUrl }: { title: string, rating: string, imageUrl?: string }) => (
+const BundleCard = ({ title, rating, imageUrl, price }: { title: string, rating: string, imageUrl?: string, price?: number }) => (
   <Card style={styles.bundleCard}>
     <Image 
       source={{ uri: imageUrl || 'https://via.placeholder.com/400x260' }} 
@@ -82,6 +115,7 @@ const BundleCard = ({ title, rating, imageUrl }: { title: string, rating: string
       <View style={styles.ratingRow}>
         <Star size={12} color="#F59E0B" fill="#F59E0B" />
         <Text style={styles.ratingText}>{rating}</Text>
+        <Text style={{ marginLeft: 'auto', color: COLORS.freshGreen, fontWeight: 'bold' }}>{price} TL</Text>
       </View>
     </View>
   </Card>
@@ -112,7 +146,7 @@ const styles = StyleSheet.create({
     gap: SPACING.m,
   },
   gridItemWrapper: {
-    width: '47%', // roughly 2 columns with gap
+    width: '47%', 
   },
   verticalList: {
     paddingHorizontal: SPACING.l,

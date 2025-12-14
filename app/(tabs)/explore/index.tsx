@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Dimensions, TouchableOpacity, Platform, ScrollView, Image } from 'react-native';
-import { Search, MapPin, Map as MapIcon, Clock, ChevronRight, Plus } from 'lucide-react-native';
+import { Search, MapPin, Map as MapIcon, Clock, ChevronRight, Plus, Tag } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, RADIUS, SPACING } from '@/constants/Colors';
 import { useStore } from '@/store/useStore';
@@ -11,9 +11,11 @@ import MapView, { Marker, PROVIDER_GOOGLE } from '@/components/NativeMap';
 import { SeasonalSection } from '@/components/SeasonalSection';
 import { Card } from '@/components/ui/Card';
 import { PazarmHeader } from '@/components/PazarmHeader';
-import { PRODUCTS } from '@/data/sampleData';
 import { useToast } from '@/components/ui/Toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/lib/supabaseClient';
+import { Product, Campaign } from '@/types';
+import { fetchActiveCampaigns } from '@/lib/campaigns';
 
 const { width, height } = Dimensions.get('window');
 
@@ -26,19 +28,22 @@ const DEFAULT_REGION = {
 
 export default function ExploreMapScreen() {
   const router = useRouter();
-  const { nearbyMarkets } = useStore();
+  const { nearbyMarkets, fetchMarkets } = useStore();
   const { status, activeOrder } = useOrderStore();
   const { addItem } = useCartStore();
   const { showToast } = useToast();
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [region, setRegion] = useState(DEFAULT_REGION);
+  const [weeklyPicks, setWeeklyPicks] = useState<Product[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const insets = useSafeAreaInsets();
 
-  // Curated picks for "Weekly Suggestions"
-  const weeklyPicks = PRODUCTS.slice(0, 3); 
-
   useEffect(() => {
+    fetchMarkets();
+    fetchWeeklyPicks();
+    loadCampaigns();
+
     (async () => {
       if (Platform.OS !== 'web') {
         let { status } = await Location.requestForegroundPermissionsAsync();
@@ -55,6 +60,27 @@ export default function ExploreMapScreen() {
     })();
   }, []);
 
+  const fetchWeeklyPicks = async () => {
+    // Fetch random products for demo weekly picks
+    const { data } = await supabase
+      .from('market_products')
+      .select('current_price, product:products(*)')
+      .limit(3);
+    
+    if (data) {
+      const picks = data.map((item: any) => ({
+        ...item.product,
+        current_price: item.current_price
+      }));
+      setWeeklyPicks(picks);
+    }
+  };
+
+  const loadCampaigns = async () => {
+    const active = await fetchActiveCampaigns();
+    setCampaigns(active.slice(0, 3)); // Show top 3
+  };
+
   const handleSearchSubmit = () => {
     if (searchQuery.trim()) {
       router.push(`/explore/search-results?q=${encodeURIComponent(searchQuery)}`);
@@ -65,13 +91,13 @@ export default function ExploreMapScreen() {
     addItem({
       refId: item.id,
       type: 'product',
-      nameTR: item.nameTR,
-      unitTR: item.unitTR,
-      priceTL: item.priceTL,
+      nameTR: item.name,
+      unitTR: item.unit,
+      priceTL: item.current_price || 0,
       quantity: 1,
-      imageUrl: item.imageUrl
+      imageUrl: item.image_url
     });
-    showToast(`Sepete eklendi: ${item.nameTR}`);
+    showToast(`Sepete eklendi: ${item.name}`);
   };
 
   const showTrackingWidget = status === 'active' && activeOrder;
@@ -88,7 +114,7 @@ export default function ExploreMapScreen() {
         {nearbyMarkets.map((market) => (
           <Marker
             key={market.id}
-            coordinate={market.coordinates}
+            coordinate={{ latitude: market.latitude, longitude: market.longitude }}
             onPress={() => router.push(`/explore/location/${market.id}`)}
           >
             <View style={styles.markerContainer}>
@@ -118,7 +144,7 @@ export default function ExploreMapScreen() {
                  </View>
                </View>
                <Text style={styles.trackingSub}>
-                 {activeOrder?.items.length} ürün hazırlanıyor ve size doğru geliyor.
+                 {activeOrder?.items?.length} ürün hazırlanıyor ve size doğru geliyor.
                </Text>
                <View style={styles.trackingAction}>
                  <Text style={styles.trackingLink}>Takip Et</Text>
@@ -128,10 +154,36 @@ export default function ExploreMapScreen() {
            ) : (
              <ScrollView 
                style={{ maxHeight: 550 }} 
-               contentContainerStyle={{ paddingBottom: 100 }} // Increased padding
+               contentContainerStyle={{ paddingBottom: 100 }}
                showsVerticalScrollIndicator={false}
              >
                <SeasonalSection />
+
+               {/* Campaigns Section */}
+               {campaigns.length > 0 && (
+                 <View style={styles.campaignsSection}>
+                   <View style={styles.sectionHeader}>
+                     <Text style={styles.sectionTitle}>Fırsatlar & Kampanyalar</Text>
+                     <TouchableOpacity onPress={() => router.push('/campaigns')}>
+                        <Text style={styles.sectionLink}>Tümünü Gör</Text>
+                     </TouchableOpacity>
+                   </View>
+                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.campaignList}>
+                     {campaigns.map(campaign => (
+                       <TouchableOpacity 
+                         key={campaign.id} 
+                         style={styles.campaignCard}
+                         onPress={() => router.push(`/campaigns/${campaign.id}`)}
+                       >
+                         <Image source={{ uri: campaign.image_url || '' }} style={styles.campaignImage} />
+                         <View style={styles.campaignOverlay}>
+                            <Text style={styles.campaignTitle} numberOfLines={2}>{campaign.title}</Text>
+                         </View>
+                       </TouchableOpacity>
+                     ))}
+                   </ScrollView>
+                 </View>
+               )}
                
                {/* Weekly Suggestions */}
                <View style={styles.picksSection}>
@@ -147,10 +199,10 @@ export default function ExploreMapScreen() {
                         style={styles.pickCard}
                         onPress={() => router.push(`/product/${item.id}`)}
                      >
-                       <Image source={{ uri: item.imageUrl }} style={styles.pickImage} />
+                       <Image source={{ uri: item.image_url || '' }} style={styles.pickImage} />
                        <View style={styles.pickContent}>
-                         <Text style={styles.pickName} numberOfLines={1}>{item.nameTR}</Text>
-                         <Text style={styles.pickPrice}>{item.priceTL} TL <Text style={styles.pickUnit}>/ {item.unitTR}</Text></Text>
+                         <Text style={styles.pickName} numberOfLines={1}>{item.name}</Text>
+                         <Text style={styles.pickPrice}>{item.current_price} TL <Text style={styles.pickUnit}>/ {item.unit}</Text></Text>
                        </View>
                        <TouchableOpacity 
                          style={styles.pickAddBtn}
@@ -165,11 +217,16 @@ export default function ExploreMapScreen() {
 
                {/* Discover Markets */}
                <View style={styles.marketsSection}>
-                  <Text style={styles.sectionTitle}>PazarM noktalarını keşfet</Text>
-                  <Text style={styles.sectionSubtitle}>Mahallene en yakın toplama noktaları.</Text>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>PazarM Noktaları</Text>
+                    <TouchableOpacity onPress={() => router.push('/markets')}>
+                       <Text style={styles.sectionLink}>Tümünü Gör</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.sectionSubtitle, { paddingHorizontal: SPACING.m }]}>Mahallene en yakın toplama noktaları.</Text>
                   
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.marketsList}>
-                    {nearbyMarkets.sort((a,b) => a.distanceMeters - b.distanceMeters).map(market => (
+                    {nearbyMarkets.sort((a,b) => (a.distanceMeters || 0) - (b.distanceMeters || 0)).map(market => (
                       <TouchableOpacity 
                         key={market.id}
                         onPress={() => router.push(`/explore/location/${market.id}`)}
@@ -179,7 +236,7 @@ export default function ExploreMapScreen() {
                             <MapPin size={16} color={COLORS.white} />
                           </View>
                           <View>
-                            <Text style={styles.marketName}>{market.nameTR}</Text>
+                            <Text style={styles.marketName}>{market.name}</Text>
                             <Text style={styles.marketDistance}>{market.distanceMeters}m</Text>
                           </View>
                         </Card>
@@ -304,8 +361,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.freshGreen,
   },
-  // Section Headers
   sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: SPACING.m,
     marginBottom: SPACING.s,
   },
@@ -313,14 +372,50 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     fontSize: 16,
     color: COLORS.textPrimary,
-    marginBottom: 2,
   },
   sectionSubtitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 12,
     color: COLORS.textSecondary,
+    paddingHorizontal: SPACING.m,
   },
-  // Picks Section
+  sectionLink: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: COLORS.freshGreen,
+  },
+  campaignsSection: {
+    marginTop: SPACING.s,
+    marginBottom: SPACING.m,
+  },
+  campaignList: {
+    paddingHorizontal: SPACING.m,
+    gap: SPACING.m,
+  },
+  campaignCard: {
+    width: 240,
+    height: 120,
+    borderRadius: RADIUS.m,
+    overflow: 'hidden',
+    backgroundColor: COLORS.card,
+  },
+  campaignImage: {
+    width: '100%',
+    height: '100%',
+  },
+  campaignOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: SPACING.s,
+  },
+  campaignTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: COLORS.white,
+  },
   picksSection: {
     marginTop: SPACING.s,
     marginBottom: SPACING.m,
@@ -372,15 +467,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Markets Section
   marketsSection: {
-    paddingHorizontal: SPACING.m,
     marginTop: SPACING.s,
   },
   marketsList: {
     gap: SPACING.s,
     paddingBottom: SPACING.s,
     marginTop: SPACING.s,
+    paddingHorizontal: SPACING.m,
   },
   marketCard: {
     flexDirection: 'row',

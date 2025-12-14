@@ -1,31 +1,52 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Plus } from 'lucide-react-native';
 import { COLORS, SPACING, RADIUS } from '@/constants/Colors';
-import { PRODUCTS } from '@/data/sampleData';
 import { useCartStore } from '@/store/useCartStore';
 import { Card } from '@/components/ui/Card';
 import { PazarmHeader } from '@/components/PazarmHeader';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '@/lib/supabaseClient';
+import { Product } from '@/types';
 
 export default function ProductListScreen() {
   const { categoryId, categoryTitleTR } = useLocalSearchParams<{ categoryId: string, categoryTitleTR: string }>();
   const router = useRouter();
   const addItem = useCartStore((state) => state.addItem);
   const insets = useSafeAreaInsets();
+  const [products, setProducts] = useState<Product[]>([]);
 
-  const products = PRODUCTS.filter(p => p.categoryId === categoryId);
+  useEffect(() => {
+    if (categoryId) {
+      fetchProducts();
+    }
+  }, [categoryId]);
+
+  const fetchProducts = async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('*, market_products(current_price)')
+      .eq('category_id', categoryId);
+    
+    if (data) {
+      const formatted = data.map((p: any) => ({
+        ...p,
+        current_price: p.market_products?.[0]?.current_price || 0
+      }));
+      setProducts(formatted);
+    }
+  };
 
   const handleAddToCart = (item: any) => {
     addItem({
       refId: item.id,
       type: 'product',
-      nameTR: item.nameTR,
-      unitTR: item.unitTR,
-      priceTL: item.priceTL,
+      nameTR: item.name,
+      unitTR: item.unit,
+      priceTL: item.current_price,
       quantity: 1,
-      imageUrl: item.imageUrl
+      imageUrl: item.image_url
     });
     Alert.alert('Sepete Eklendi', 'Ürün sepetinize eklendi.');
   };
@@ -41,11 +62,11 @@ export default function ProductListScreen() {
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => router.push(`/product/${item.id}`)}>
             <Card style={styles.productCard}>
-              <Image source={{ uri: item.imageUrl }} style={styles.image} />
+              <Image source={{ uri: item.image_url || '' }} style={styles.image} />
               <View style={styles.info}>
-                <Text style={styles.name}>{item.nameTR}</Text>
-                <Text style={styles.unit}>{item.unitTR}</Text>
-                <Text style={styles.price}>{item.priceTL.toFixed(2)} TL</Text>
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.unit}>{item.unit}</Text>
+                <Text style={styles.price}>{item.current_price?.toFixed(2)} TL</Text>
               </View>
               <TouchableOpacity 
                 style={styles.addButton}

@@ -6,7 +6,6 @@ import { COLORS, SPACING, RADIUS } from '@/constants/Colors';
 import { Button } from '@/components/ui/Button';
 import { useCartStore } from '@/store/useCartStore';
 import { useStore } from '@/store/useStore';
-import { useLoyaltyStore } from '@/store/useLoyaltyStore';
 import { useOrderStore } from '@/store/useOrderStore';
 import { Card } from '@/components/ui/Card';
 import { PazarmHeader } from '@/components/PazarmHeader';
@@ -14,53 +13,59 @@ import { PazarmHeader } from '@/components/PazarmHeader';
 export default function CheckoutScreen() {
   const router = useRouter();
   const { getTotals, clearCart, items } = useCartStore();
-  const { addresses } = useStore();
-  const { points, addPoints, redeemPoints } = useLoyaltyStore();
+  const { addresses, user } = useStore();
   const { startOrder } = useOrderStore();
   
   const { oneTimeTotalTL, subscriptionTotalTL, grandTotalTL } = getTotals();
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'online'>('cash');
   const [usePoints, setUsePoints] = useState(false);
+  const [loading, setLoading] = useState(false);
   
-  // Use first address as default
   const selectedAddress = addresses[0];
 
-  // Calculate Loyalty Logic
+  const points = user?.loyalty_balance || 0;
   const maxDiscount = Math.min(points, grandTotalTL);
   const discountAmount = usePoints ? maxDiscount : 0;
   const finalTotal = grandTotalTL - discountAmount;
   const earnedPoints = Math.floor(finalTotal / 100);
 
-  const handleOrder = () => {
+  const handleOrder = async () => {
     if (items.length === 0) {
       Alert.alert("Hata", "Sepetiniz boş.");
       return;
     }
-
-    // Start the order in OrderStore
-    startOrder({
-      id: `ord_${Date.now()}`,
-      marketId: 'm1', // Demo market
-      etaMinutes: 15,
-      items: [...items]
-    });
-
-    if (usePoints && discountAmount > 0) {
-      redeemPoints(discountAmount);
+    if (!user || !selectedAddress) {
+      Alert.alert("Hata", "Lütfen giriş yapın ve adres ekleyin.");
+      return;
     }
-    
-    addPoints(earnedPoints);
-    clearCart();
-    
-    router.replace({
-      pathname: '/order-confirmed',
-      params: {
-        earned: earnedPoints,
-        used: discountAmount,
-        total: finalTotal,
-        hasSubscription: items.some(i => i.isSubscription) ? '1' : '0'
-      }
-    });
+
+    setLoading(true);
+
+    const orderId = await startOrder(
+      user,
+      'm1000000-0000-0000-0000-000000000001', // Demo market ID since we don't select market in checkout yet
+      selectedAddress,
+      items,
+      { subtotal: grandTotalTL, total: finalTotal, discount: discountAmount },
+      items.some(i => i.isSubscription)
+    );
+
+    setLoading(false);
+
+    if (orderId) {
+      clearCart();
+      router.replace({
+        pathname: '/order-confirmed',
+        params: {
+          earned: earnedPoints,
+          used: discountAmount,
+          total: finalTotal,
+          hasSubscription: items.some(i => i.isSubscription) ? '1' : '0'
+        }
+      });
+    } else {
+      Alert.alert("Hata", "Sipariş oluşturulurken bir hata oluştu.");
+    }
   };
 
   const hasSubscription = items.some(i => i.isSubscription);
@@ -108,12 +113,12 @@ export default function CheckoutScreen() {
           <Text style={styles.sectionTitle}>Teslimat Adresi</Text>
           <Card style={styles.addressCard}>
             <View style={styles.addressHeader}>
-              <Text style={styles.addressType}>{selectedAddress.title}</Text>
+              <Text style={styles.addressType}>{selectedAddress?.label || 'Ev'}</Text>
               <TouchableOpacity onPress={() => router.push('/settings')}>
                 <Text style={styles.changeLink}>Değiştir</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.addressText}>{selectedAddress.fullAddress}</Text>
+            <Text style={styles.addressText}>{selectedAddress?.full_address || 'Adres seçilmedi'}</Text>
           </Card>
         </View>
 
@@ -138,19 +143,6 @@ export default function CheckoutScreen() {
                 <Text style={styles.paymentText}>Kapıda Kart</Text>
               </View>
               <View style={[styles.radio, paymentMethod === 'card' && styles.radioSelected]} />
-            </Card>
-          </TouchableOpacity>
-
-          <TouchableOpacity disabled={true} style={{ marginTop: SPACING.s, opacity: 0.6 }}>
-            <Card style={styles.paymentCard}>
-              <View style={styles.paymentRow}>
-                <CreditCard size={20} color={COLORS.textSecondary} />
-                <View>
-                  <Text style={[styles.paymentText, { color: COLORS.textSecondary }]}>Online Kart Ödeme (yakında)</Text>
-                  <Text style={styles.disabledText}>Çok yakında uygulama içi kart ödemesi aktif olacak.</Text>
-                </View>
-              </View>
-              <View style={styles.radio} />
             </Card>
           </TouchableOpacity>
         </View>
@@ -210,7 +202,7 @@ export default function CheckoutScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Button title="Siparişi Onayla" onPress={handleOrder} size="large" />
+        <Button title="Siparişi Onayla" onPress={handleOrder} size="large" loading={loading} />
       </View>
     </View>
   );
@@ -315,12 +307,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 14,
     color: COLORS.textPrimary,
-  },
-  disabledText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: 2,
   },
   radio: {
     width: 20,
